@@ -157,7 +157,7 @@ class time_veil:
 	time
 	"""
 
-	def __init__(self, dataframe, method = 'random', max_days = 365, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
+	def __init__(self, dataframe, method, max_days = 365, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
 		if from_reference:
 			"""
 			This method creates the reference table from a key value pair in a 
@@ -170,16 +170,22 @@ class time_veil:
 
 			assert key_col in dataframe.columns, 'key_col must be in the dataframe column set'
 			assert val_col in dataframe.columns, 'val_col must be in the dataframe column set'
+			dataframe  = dataframe.copy(deep = True)
+
+			try:
+				dataframe[val_col] = dataframe[val_col].astype(np.int64)
+			except:
+				'{} could not be converted to type np.int64 for downstream conversion to timedelta64[ns] type'.format(val_col)
 
 			time_offset = pd.Series([np.timedelta64(x, 'ns') for x in dataframe[val_col]]) # this is slow -- can optimize
 
 			self.reference_table = dict(zip(dataframe[key_col], time_offset))
 			self.key_name = key_col
+			self.method = method
 
 		elif not from_reference:
 
-			assert id_column is not None, 'if from_reference is False, id_column of column to \
-be de-identified cannot be None'
+			assert id_column is not None, 'if from_reference is False, id_column cannot be None'
 			assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
 
 			if method == 'random':
@@ -193,11 +199,14 @@ be de-identified cannot be None'
 				timedeltas = pd.to_timedelta(values, unit = 'D')
 
 				self.reference_table = dict(zip(keys, timedeltas))
+				self.key_name = id_column
+				self.method = method
 
 			elif method == 'year_start':
 				"""
 				This method computes the dateoffset from midnight of the year of time_column. 
 				"""
+				assert time_column is not None, 'if the method is year_start, a time_column must be provided for reference'
 
 				dataframe = dataframe.copy(deep = True)
 
@@ -213,8 +222,48 @@ be de-identified cannot be None'
 				offsets = dataframe[time_column] - pd.Series([datetime.datetime(x, 1, 1, 0, 0, 0) for x in year_starts])
 
 				self.reference_table = dict(zip(dataframe[id_column], offsets))
+				self.key_name = id_column
+				self.method = method
+
+	def apply_offset(self, dataframe, update = False, reverse = False, id_column = self.key_name, time_columns):
+		"""
+		This applies the offset stored in reference table to all columns in time_columns
+		if possible. If the update flag is True, it also looks for the minimum time for any 
+		ids that are not currently in the reference table and creates the associated offset
+		based on self.method. If false, it simply returns NA for the time to err on the side of 
+		caution
+		"""
+		dataframe = dataframe.copy(deep = True)
+		if not update:
+			# Try to convert every time_col in time_columns:
+			if isistance(time_columns, str):
+				try:
+					dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
+				except:
+					'Conversion Error'
+			elif isinstance(time_columns, list):
+				for col in time_columns:
+					try:
+						dataframe[col] = pd.to_datetime(dataframe[col])
+					except:
+						'Conversion Error'
+			
 
 
+
+	def save(self, file, format = '.csv', debug = False):
+		"""
+		This function saves the current state of the reference table to the 
+		format specified. The offset will be stored in a 64 bit integer 
+		containing the number of nanoseconds in the offset. This is natively
+		handled in the __init__ method for reading
+		"""
+
+		offset = [x.total_seconds() * 1000000000 for x in self.reference_table.values()]
+		save_df = pd.DataFrame.from_dict({self.key_name: list(self.reference_table.keys()), 'offset': offset})
+		save_df.to_csv(file)
+
+		return True
 
 
 
