@@ -248,51 +248,56 @@ class time_veil:
 
 		dataframe = dataframe.copy(deep = True)
 		dataframe = dataframe.reset_index()
-		if not update:
-			# Try to convert every time_col in time_columns:
-			if isinstance(time_columns, str):
+		
+		if update:
+			new_keys = [key for key in dataframe[id_column] if key not in self.reference_table]
+			if len(new_keys) > 0:
+				values = np.random.uniform(-self.max_days, max_days, size = len(new_keys))
+				timedeltas = pd.to_datetime(values, unit = 'D')
+
+				new_dict = dict(zip(new_keys, timedeltas))
+
+				self.reference_table.update(new_dict)
+
+		# === End Update Block
+
+		# Try to convert every time_col in time_columns:
+		if isinstance(time_columns, str):
+			try:
+				dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
+			except:
+				'Conversion Error'
+
+			for row_n in range(dataframe.shape[0]):
 				try:
-					dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
+					if reverse:
+						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+																+ self.reference_table[dataframe.loc[row_n, id_column]])
+					else:
+						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+																- self.reference_table[dataframe.loc[row_n, id_column]])
+				except:
+					dataframe.loc[row_n, time_columns] = np.nan
+
+		elif isinstance(time_columns, list):
+			for col in time_columns:
+				try:
+					dataframe[col] = pd.to_datetime(dataframe[col])
 				except:
 					'Conversion Error'
 
-				for row_n in range(dataframe.shape[0]):
-					try:
-						if reverse:
-							dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
-																	+ self.reference_table[dataframe.loc[row_n, id_column]])
-						else:
-							dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
-																	- self.reference_table[dataframe.loc[row_n, id_column]])
-					except:
-						dataframe.loc[row_n, time_columns] = np.nan
-
-			elif isinstance(time_columns, list):
+			for row_n in range(dataframe.shape[0]):
 				for col in time_columns:
 					try:
-						dataframe[col] = pd.to_datetime(dataframe[col])
+						if reverse:
+							dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
+															+ self.reference_table[dataframe.loc[row_n, id_column]])
+						else:
+							dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
+															- self.reference_table[dataframe.loc[row_n, id_column]])
 					except:
-						'Conversion Error'
-
-				for row_n in range(dataframe.shape[0]):
-					for col in time_columns:
-						try:
-							if reverse:
-								dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
-																+ self.reference_table[dataframe.loc[row_n, id_column]])
-							else:
-								dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
-																- self.reference_table[dataframe.loc[row_n, id_column]])
-						except:
-							dataframe.loc[row_n, col] = np.nan
-		elif update:
-			# First, see if any new identifiers are present
-			for key in dataframe[id_column]:
-				if key not in self.reference_table:
-					# Update these keys:
-					if self.method == 'random':
-
-		pass
+						dataframe.loc[row_n, col] = np.nan
+		return dataframe
 
 	def save(self, file, format = '.csv', debug = False):
 		"""
