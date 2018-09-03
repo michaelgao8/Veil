@@ -157,7 +157,7 @@ class time_veil:
 	time
 	"""
 
-	def __init__(self, dataframe, method, max_days = 365, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
+	def __init__(self, dataframe, method, max_days = None, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
 		if from_reference:
 			"""
 			This method creates the reference table from a key value pair in a 
@@ -183,6 +183,11 @@ class time_veil:
 			self.key_name = key_col
 			self.method = method
 
+			if method == 'random':
+				self.max_days = max_days
+			elif method == 'year_start':
+				self.max_days = None
+
 		elif not from_reference:
 
 			assert id_column is not None, 'if from_reference is False, id_column cannot be None'
@@ -193,6 +198,7 @@ class time_veil:
 				This method takes in value of the ID in the dataframe and generates a random date offset
 				up to `max_days` away from the original. 
 				"""
+				assert max_days is not None, 'if using a random_method, please specify a max_days'
 				keys = dataframe[id_column].unique()
 
 				values = np.random.uniform(-max_days, max_days, size = keys.shape[0])
@@ -201,6 +207,8 @@ class time_veil:
 				self.reference_table = dict(zip(keys, timedeltas))
 				self.key_name = id_column
 				self.method = method
+				self.max_days = max_days
+
 
 			elif method == 'year_start':
 				"""
@@ -224,8 +232,9 @@ class time_veil:
 				self.reference_table = dict(zip(dataframe[id_column], offsets))
 				self.key_name = id_column
 				self.method = method
+				self.max_days = None
 
-	def apply_offset(self, dataframe, update = False, reverse = False, id_column = self.key_name, time_columns):
+	def apply_offset(self, dataframe, time_columns, update = False, reverse = False, id_column = None):
 		"""
 		This applies the offset stored in reference table to all columns in time_columns
 		if possible. If the update flag is True, it also looks for the minimum time for any 
@@ -233,23 +242,57 @@ class time_veil:
 		based on self.method. If false, it simply returns NA for the time to err on the side of 
 		caution
 		"""
+
+		if id_column is None:
+			id_column = self.key_name
+
 		dataframe = dataframe.copy(deep = True)
+		dataframe = dataframe.reset_index()
 		if not update:
 			# Try to convert every time_col in time_columns:
-			if isistance(time_columns, str):
+			if isinstance(time_columns, str):
 				try:
 					dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
 				except:
 					'Conversion Error'
+
+				for row_n in range(dataframe.shape[0]):
+					try:
+						if reverse:
+							dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+																	+ self.reference_table[dataframe.loc[row_n, id_column]])
+						else:
+							dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+																	- self.reference_table[dataframe.loc[row_n, id_column]])
+					except:
+						dataframe.loc[row_n, time_columns] = np.nan
+
 			elif isinstance(time_columns, list):
 				for col in time_columns:
 					try:
 						dataframe[col] = pd.to_datetime(dataframe[col])
 					except:
 						'Conversion Error'
-			
 
+				for row_n in range(dataframe.shape[0]):
+					for col in time_columns:
+						try:
+							if reverse:
+								dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
+																+ self.reference_table[dataframe.loc[row_n, id_column]])
+							else:
+								dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
+																- self.reference_table[dataframe.loc[row_n, id_column]])
+						except:
+							dataframe.loc[row_n, col] = np.nan
+		elif update:
+			# First, see if any new identifiers are present
+			for key in dataframe[id_column]:
+				if key not in self.reference_table:
+					# Update these keys:
+					if self.method == 'random':
 
+		pass
 
 	def save(self, file, format = '.csv', debug = False):
 		"""
