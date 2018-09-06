@@ -3,7 +3,7 @@ import numpy as np
 import warnings
 import datetime
 
-class id_veil:
+class id_map:
 	"""
 	The following class instantiates objects which are associated with an ID 
 	that must be replaced in the deidentification process. The methods can 
@@ -145,9 +145,9 @@ mapped to NaN")
 		save_df.to_csv(file)
 		return True
 
-# Time veil ===========
+# Offset Map ===========
 
-class time_veil:
+class offset_map:
 	"""
 	The following class instantiates objects which are associated with an ID. The objects have an 
 	internal reference that stores the datetime offsets that need to be applied in order to shift 
@@ -252,7 +252,7 @@ class time_veil:
 		if update:
 			new_keys = [key for key in dataframe[id_column] if key not in self.reference_table]
 			if len(new_keys) > 0:
-				values = np.random.uniform(-self.max_days, max_days, size = len(new_keys))
+				values = np.random.uniform(-self.max_days, self.max_days, size = len(new_keys))
 				timedeltas = pd.to_datetime(values, unit = 'D')
 
 				new_dict = dict(zip(new_keys, timedeltas))

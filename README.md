@@ -11,6 +11,11 @@ TODO:
 * Provide more saving formats for `id_veil.save()`
 * Add tests
 
+Protected Health Information (PHI)
+----------------------------------
+
+The de-identification criteria for protected health information in the United States is described [here](https://www.law.cornell.edu/cfr/text/45/164.514)
+
 License
 -------
 MIT
