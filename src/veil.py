@@ -98,15 +98,18 @@ that you are trying to replace. Please make sure that this is intended behavior'
 							value_init += 1
 							if value_init == new_value_size:
 								break
-			new_values = pd.Series(list(new_values))
+				new_values = pd.Series(list(new_values))
 
-			new_table = dict(zip(new_keys, new_values))
+				new_table = dict(zip(new_keys, new_values))
+				self.reference_table.update(new_table)
 
 			if debug:
-				print(new_table)
+				try:
+					print(new_table)
+				except:
+					print('no values in new_table')
 
 
-			self.reference_table.update(new_table)
 		else:
 			if len([x for x in dataframe[column_to_replace] if x not in self.reference_table]) != 0:
 				warnings.warn("There are values in this column which are not in this object's reference table. Additionally \
