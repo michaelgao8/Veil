@@ -274,10 +274,10 @@ class offset_map:
 			for row_n in range(dataframe.shape[0]):
 				try:
 					if reverse:
-						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_columns]
 																+ self.reference_table[dataframe.loc[row_n, id_column]])
 					else:
-						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_column]
+						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_columns]
 																- self.reference_table[dataframe.loc[row_n, id_column]])
 				except:
 					dataframe.loc[row_n, time_columns] = np.nan
