@@ -226,7 +226,7 @@ class offset_map:
 				except Exception:
 					print("Could not convert {} to pd.datetime object".format(time_column))
 
-				dataframe = dataframe.sort_values([time_column]).drop_duplicates(id_column, keep = 'first').reset_index()
+				dataframe = dataframe.sort_values([time_column]).drop_duplicates(id_column, keep = 'first').reset_index(drop = True)
 
 				# Compute the offset from time_column to the first of the year
 				year_starts = dataframe[time_column].dt.year
@@ -250,9 +250,10 @@ class offset_map:
 			id_column = self.key_name
 
 		dataframe = dataframe.copy(deep = True)
-		dataframe = dataframe.reset_index()
+		dataframe = dataframe.reset_index(drop = True)
 		
 		if update:
+			assert self.method == 'random', "update = True currently only supports 'random'"
 			new_keys = [key for key in dataframe[id_column] if key not in self.reference_table]
 			if len(new_keys) > 0:
 				values = np.random.uniform(-self.max_days, self.max_days, size = len(new_keys))
@@ -270,36 +271,70 @@ class offset_map:
 				dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
 			except:
 				'Conversion Error'
+				pass
+			
+			new_time_col = []
 
-			for row_n in range(dataframe.shape[0]):
-				try:
-					if reverse:
-						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_columns]
-																+ self.reference_table[dataframe.loc[row_n, id_column]])
-					else:
-						dataframe.loc[row_n, time_columns] = (dataframe.loc[row_n, time_columns]
-																- self.reference_table[dataframe.loc[row_n, id_column]])
-				except:
-					dataframe.loc[row_n, time_columns] = np.nan
+			if reverse:
+
+				for i, row in enumerate(dataframe.itertuples()):
+					if i % 10000 == 0:
+						print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
+					try:
+						new_time_col.append(getattr(row, time_columns) + self.reference_table[getattr(row, id_column)])
+					except:
+						new_time_col.append(np.nan)
+
+			else:
+				for i, row in enumerate(dataframe.itertuples()):
+					if i % 10000 == 0:
+						print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
+					try:
+						new_time_col.append(getattr(row, time_columns) - self.reference_table[getattr(row, id_column)])
+					except:
+						new_time_col.append(np.nan)
+			
+			dataframe[time_columns] = new_time_col
+			#dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
+						
 
 		elif isinstance(time_columns, list):
+			valid_col_list = []
 			for col in time_columns:
 				try:
 					dataframe[col] = pd.to_datetime(dataframe[col])
+					valid_col_list.append(col)
 				except:
 					'Conversion Error'
+			
+			
+			if reverse:
+				for col in valid_col_list:
+					new_time_col = []
+					for i, row in enumerate(dataframe.itertuples()):
+						if i % 10000 == 0:
+							print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
+						try:
+							new_time_col.append(getattr(row, col) + self.reference_table[getattr(row, id_column)])
+						except:
+							new_time_col.append(np.nan)
+					dataframe[col] = new_time_col
+					#dataframe[col] = pd.to_datetime(dataframe[col])
 
-			for row_n in range(dataframe.shape[0]):
-				for col in time_columns:
-					try:
-						if reverse:
-							dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
-															+ self.reference_table[dataframe.loc[row_n, id_column]])
-						else:
-							dataframe.loc[row_n, col] = (dataframe.loc[row_n, col]
-															- self.reference_table[dataframe.loc[row_n, id_column]])
-					except:
-						dataframe.loc[row_n, col] = np.nan
+			else:
+				for col in valid_col_list:
+					new_time_col = []
+					for i, row in enumerate(dataframe.itertuples()):
+						if i % 10000 == 0:
+							print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
+						try:
+							new_time_col.append(getattr(row, col) - self.reference_table[getattr(row, id_column)])
+						except:
+							new_time_col.append(np.nan)
+					dataframe[col] = new_time_col
+					#dataframe[col] = pd.to_datetime(dataframe[col])
+
+			
 		return dataframe
 
 	def save(self, file, format = '.csv', debug = False):
