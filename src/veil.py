@@ -254,7 +254,7 @@ class offset_map:
 		
 		if update:
 			assert self.method == 'random', "update = True currently only supports 'random'"
-			new_keys = [key for key in dataframe[id_column] if key not in self.reference_table]
+			new_keys = [key for key in dataframe[id_column].unique() if key not in self.reference_table]
 			if len(new_keys) > 0:
 				values = np.random.uniform(-self.max_days, self.max_days, size = len(new_keys))
 				timedeltas = pd.to_datetime(values, unit = 'D')
