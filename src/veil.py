@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import datetime
+import random
 
 class id_map:
 	"""
@@ -15,7 +16,7 @@ class id_map:
 	for easy and fast reference.
 	"""
 
-	def __init__(self, dataframe, id_column = None, from_reference = False, key_col = None, val_col = None):
+	def __init__(self, dataframe = None, id_column = None, from_reference = False, key_col = None, val_col = None):
 		if from_reference:
 			"""
 			This method creates the reference table from a key value pair in a 
@@ -25,6 +26,7 @@ class id_map:
 			"""
 			assert key_col is not None, 'if using from_reference, must specify a key_col'
 			assert val_col is not None, 'if using val_col, must specify a val_col'
+			assert dataframe is not None, 'if using from_reference, dataframe must be specified'
 
 			assert key_col in dataframe.columns, 'key_col must be in the dataframe column set'
 			assert val_col in dataframe.columns, 'val_col must be in the dataframe column set'
@@ -40,11 +42,14 @@ class id_map:
 			is hard-coded in this case to 1 x 10^9, in the assumption that we will never
 			have more identifiers than that (1 billion)
 			"""
-			assert id_column is not None, 'if from_reference is False, id_column of column to \
-			be de-identified cannot be None'
-			assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
+			if dataframe is not None:
+				assert id_column is not None, 'if from_reference is False, id_column of column to \
+				be de-identified cannot be None'
+				assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
 
-			keys = dataframe[id_column].unique()
+				keys = dataframe[id_column].unique()
+			elif dataframe is None:
+				keys = id_column.unique()
 
 			# Generate a unique list of random numbers that ensures no collision and also prevents us
 			# from creating really large range() objects in memory
@@ -55,14 +60,11 @@ class id_map:
 			value_init = 0
 
 			while value_init < value_size:
-				r = np.random.randint(0, 1000000000, 1000)
-				# Generate 1000 at a time -- this should be reasonably fast
-				for rand in r:
-					if rand not in values:
-						values.add(rand)
-						value_init += 1
-						if value_init == value_size:
-							break
+				r = random.randint(0, 1000000000)
+
+				if r not in values:
+					values.add(r)
+					value_init += 1
 
 			values = pd.Series(list(values))
 			self.reference_table = dict(zip(keys, values))
@@ -91,13 +93,11 @@ that you are trying to replace. Please make sure that this is intended behavior'
 				value_init = 0
 
 				while value_init < new_value_size:
-					r = np.random.randint(0, 1000000000, 1000)
-					for rand in r:
-						if (rand not in new_values) and (rand not in self.reference_table.values()):
-							new_values.add(rand)
-							value_init += 1
-							if value_init == new_value_size:
-								break
+					r = random.randint(0, 1000000000)
+					if r not in new_values:
+						new_values.add(r)
+						value_init += 1
+
 				new_values = pd.Series(list(new_values))
 
 				new_table = dict(zip(new_keys, new_values))
