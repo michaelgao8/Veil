@@ -71,7 +71,7 @@ class id_map:
 			self.key_name = id_column
 			self.val_name = 'veil_id'
 
-			assert self.key_name != self.val_name, 'Do not use veil_id as your id_column'
+			#assert self.key_name != self.val_name, 'Do not use veil_id as your id_column'
 
 	def deidentify(self, dataframe, column_to_replace, update = True, debug = False):
 		"""
@@ -84,7 +84,6 @@ class id_map:
 			if len([x for x in dataframe[column_to_replace] if x in self.reference_table.keys()]) == 0:
 				warnings.warn('There are no matches between the current reference table and the column \
 that you are trying to replace. Please make sure that this is intended behavior')
-
 			# Update the list of random numbers with new keys
 			new_keys = [key for key in dataframe[column_to_replace].unique() if key not in self.reference_table]
 			if len(new_keys) != 0:
@@ -160,7 +159,7 @@ class offset_map:
 	time
 	"""
 
-	def __init__(self, dataframe, method, max_days = None, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
+	def __init__(self, method, dataframe = None, max_days = None, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
 		if from_reference:
 			"""
 			This method creates the reference table from a key value pair in a 
@@ -194,48 +193,63 @@ class offset_map:
 		elif not from_reference:
 
 			assert id_column is not None, 'if from_reference is False, id_column cannot be None'
-			assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
 
-			if method == 'random':
-				"""
-				This method takes in value of the ID in the dataframe and generates a random date offset
-				up to `max_days` away from the original. 
-				"""
-				assert max_days is not None, 'if using a random_method, please specify a max_days'
-				keys = dataframe[id_column].unique()
+			if dataframe is not None:
+				assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
+				if method == 'random':
+					"""
+					This method takes in value of the ID in the dataframe and generates a random date offset
+					up to `max_days` away from the original. 
+					"""
+					assert max_days is not None, 'if using a random_method, please specify a max_days'
+					keys = dataframe[id_column].unique()
 
-				values = np.random.uniform(-max_days, max_days, size = keys.shape[0])
-				timedeltas = pd.to_timedelta(values, unit = 'D')
+					values = np.random.uniform(-max_days, max_days, size = keys.shape[0])
+					timedeltas = pd.to_timedelta(values, unit = 'D')
 
-				self.reference_table = dict(zip(keys, timedeltas))
-				self.key_name = id_column
-				self.method = method
-				self.max_days = max_days
+					self.reference_table = dict(zip(keys, timedeltas))
+					self.key_name = id_column
+					self.method = method
+					self.max_days = max_days
 
 
-			elif method == 'year_start':
-				"""
-				This method computes the dateoffset from midnight of the year of time_column. 
-				"""
-				assert time_column is not None, 'if the method is year_start, a time_column must be provided for reference'
+				elif method == 'year_start':
+					"""
+					This method computes the dateoffset from midnight of the year of time_column. 
+					"""
+					assert time_column is not None, 'if the method is year_start, a time_column must be provided for reference'
 
-				dataframe = dataframe.copy(deep = True)
+					dataframe = dataframe.copy(deep = True)
 
-				try:
-					dataframe[time_column] = pd.to_datetime(dataframe[time_column])
-				except Exception:
-					print("Could not convert {} to pd.datetime object".format(time_column))
+					try:
+						dataframe[time_column] = pd.to_datetime(dataframe[time_column])
+					except Exception:
+						print("Could not convert {} to pd.datetime object".format(time_column))
 
-				dataframe = dataframe.sort_values([time_column]).drop_duplicates(id_column, keep = 'first').reset_index(drop = True)
+					dataframe = dataframe.sort_values([time_column]).drop_duplicates(id_column, keep = 'first').reset_index(drop = True)
 
-				# Compute the offset from time_column to the first of the year
-				year_starts = dataframe[time_column].dt.year
-				offsets = dataframe[time_column] - pd.Series([datetime.datetime(x, 1, 1, 0, 0, 0) for x in year_starts])
+					# Compute the offset from time_column to the first of the year
+					year_starts = dataframe[time_column].dt.year
+					offsets = dataframe[time_column] - pd.Series([datetime.datetime(x, 1, 1, 0, 0, 0) for x in year_starts])
 
-				self.reference_table = dict(zip(dataframe[id_column], offsets))
-				self.key_name = id_column
-				self.method = method
-				self.max_days = None
+					self.reference_table = dict(zip(dataframe[id_column], offsets))
+					self.key_name = id_column
+					self.method = method
+					self.max_days = None
+
+			elif dataframe is None:
+				assert method == 'random', 'if dataframe is not provided, method must be random since there is no reference'
+				if method == 'random':
+					assert max_days is not None, 'if using a random_method, please specify a max_days'
+					keys = id_column.unique()
+
+					values = np.random.uniform(-max_days, max_days, size = keys.shape[0])
+					timedeltas = pd.to_timedelta(values, unit = 'D')
+
+					self.reference_table = dict(zip(keys, timedeltas))
+					self.key_name = id_column
+					self.method = method
+					self.max_days = max_days
 
 	def apply_offset(self, dataframe, time_columns, update = False, reverse = False, id_column = None):
 		"""
