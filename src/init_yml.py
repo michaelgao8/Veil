@@ -61,6 +61,8 @@ max_days: 365
 # An important note: the name of the group MUST begin with the word alias,
 # as this is how Veil finds it in this configuration:
 
+# If you create your own alias column, please make sure that it is uncommented
+
 ###### Columns to Deidentify #######
 # Below is an auto-generated list for every .csv file in this directory.
 # After each filename are two lists, the first is a datetime list and 
@@ -69,6 +71,11 @@ max_days: 365
 # Datetime columns should be any columns which will need to be time shifted
 # ID columns are any columns which will need to be masked.
 
+### Exclude ###
+# There are some columns which cannot be reasonably deidentified.
+# For example, addresses. You can specify which column to remove entirely
+# from a dataset by specifying them under exclude.
+
 ### Datetime columns Initialization ###
 # Datetime columns need to be initialized with an ID column. For example,
 # You may choose to shift a date similarly for all rows with the same 
@@ -76,9 +83,12 @@ max_days: 365
 # include it in the following configuration:
 # NOTE: Valid values include a column name or an alias name. 
 
+
 datetime_base: #TODO# for example, PATIENT_ID, or alias1
 
 ### COLUMNS ###
+# Please trim down each list until only the correct columns
+# are specified within each section
 
 """)
         f.close()
