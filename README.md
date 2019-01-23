@@ -109,13 +109,16 @@ ID, Datetime, and Exclude. Remove columns until these match what you expect them
 Any ID column should be put under the ID column, even if it has already been specified in an alias.
 Any datetime column must be included in the datetime section
 Any columns that need to be excluded must be included in the exclude section.
-
+```
 
 Disclaimer
 ----------
 
-The deidentification of data is, by design, a process which must be carefully done by the end user. This utility provides NO guarantees that the data is actually de-identified. Although some testing will be added
-to ensure some basic deidentification has occurred, *it is the sole responsibility of anyone using the above utility to ensure that all protected information has been properly removed*. For example, HIPAA identifiers include an age above 90, which this package DOES NOT currently support removing. In addition, the utility does 
+The deidentification of data is, by design, a process which must be carefully done by the end user. This 
+utility provides NO guarantees that the data is actually de-identified. Although some testing will be added
+to ensure some basic deidentification has occurred, *it is the sole responsibility of anyone using the above 
+utility to ensure that all protected information has been properly removed*. For example, HIPAA identifiers 
+include an age above 90, which this package DOES NOT currently support removing. In addition, the utility does 
 not attempt to figure out which columns contain PHI. All specification is done by the user and thus the user 
 assumes all responsibility for the quality of the deidentification process.
 
