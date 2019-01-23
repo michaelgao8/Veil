@@ -111,6 +111,29 @@ Any datetime column must be included in the datetime section
 Any columns that need to be excluded must be included in the exclude section.
 ```
 
+## Step 3: Run `apply_yml.py`
+
+```
+optional arguments:
+  -h, --help            show this help message and exit
+  -i INPUT_DIR, --input-dir INPUT_DIR
+                        Directory that contains the input files
+  -f FILE, --file FILE  Configuration YML file
+  -o OUTPUT_DIR, --output-dir OUTPUT_DIR
+                        Directory where to output the files
+  -p PREFIX, --prefix PREFIX
+                        Prefix to append to the deidentified file names
+  -v, --verbose         get progress on the status of deidentification
+```
+
+For example,
+
+```
+python apply_yml.py -i /folder/to/identified/ -f veil.yml -o /folder/to/deidentified/ -v 
+```
+
+
+
 Disclaimer
 ----------
 
