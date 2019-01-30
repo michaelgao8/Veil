@@ -49,6 +49,11 @@ if __name__ == '__main__':
         except UnicodeDecodeError:
             id_dicts[f] = pd.read_csv(args.input_dir + str(f), usecols = configs['files'][f]['id'], encoding = "ISO-8859-1")
 
+    # id_dicts:
+    # =========
+    # A dictionary whose keys are the filenames (i.e. 'test.csv')
+    # The values are a dataframe with only the associated ID columns extracted
+
     id_cols = [configs['files'][x]['id'] for x in configs['files']]
     id_cols = set([item for sublist in id_cols for item in sublist]) # flattens the array
 
@@ -67,12 +72,21 @@ if __name__ == '__main__':
         for col in valid_aliases:
             if col in id_cols:
                 id_cols.remove(col)
+    
         
     # Add other cols to base_ids
     for remaining_col in id_cols:
         id_list = [id_dicts[dataframe][remaining_col] for dataframe in id_dicts if remaining_col in id_dicts[dataframe]]
         
         base_ids[remaining_col] = pd.Series(pd.concat(id_list).unique())
+
+    # base_ids:
+    # ========
+    # base_ids is a Dictionary where the keys are either an alias name
+    # or an ID column. The values is a pd.Series that contains all of the
+    # unique values for that ID or alias.
+    # To check if an ID is an alias, check against configs[alias]
+
     if verbose:
         print('Creating associated maps')
     # Create ID maps
@@ -83,6 +97,10 @@ if __name__ == '__main__':
     # Create time_offset maps
     time_mapping_dict = {}
     time_mapping_dict[configs['datetime_base']] = veil.offset_map(dataframe = None, method = 'random', max_days = configs['max_days'], id_column = base_ids[configs['datetime_base']])
+    
+    # TODO: allow for another column to be in a different alias group
+    # For now, must be a stand-alone column name
+
     
     if verbose:
         print('All setup completed. Begin deidentification')
@@ -95,7 +113,57 @@ if __name__ == '__main__':
             df = pd.read_csv(args.input_dir + str(filename))
         except UnicodeDecodeError:
             df = pd.read_csv(args.input_dir + str(filename), encoding = "ISO-8859-1")
-        df = time_mapping_dict[configs['datetime_base']].apply_offset(dataframe = df, time_columns = configs['files'][filename]['datetime'], id_column = configs['datetime_base'], update = True)
+
+
+        # If the datetime_base column or a column as a part of an 
+        # alias is not in this dataframe:
+
+        if 'alias' not in configs['datetime_base'].lower():
+            temp_ids = [configs['datetime_base']]
+        else:
+            temp_ids = configs[configs['datetime_base']] # all aliased columns
+
+        # Check to see if the column in df is in temp_ids
+        datetime_id_column = None
+        for col in df.columns:
+            if col in temp_ids:
+                datetime_id_column = col
+                break
+
+        # Need to join in something else
+        if datetime_id_column is None:
+            if verbose:
+                print('datetime_id not found in dataframe')
+                print('now attempting to join in IDs')
+                # Find all instances in id_dicts where both 
+                for key in id_dicts:
+                    for col in df.columns:
+                        for ids in temp_ids:
+                            if col in id_dicts[key].columns and ids in id_dicts[key].columns:
+                                df_col = col
+                                temp_id = ids
+                
+                # Now, using those, we need to create a lookup
+                join_df = pd.DataFrame()
+                for key in id_dicts:
+                    if df_col in id_dicts[key].columns and temp_id in id_dicts[key].columns:
+                        join_df = join_df.append(id_dicts[key][[df_col, temp_id]])
+                join_df.drop_duplicates(inplace=True)
+                datetime_id_column = df_col
+
+        df = pd.merge(df, join_df, left_on = [df_col], right_on = [temp_id], how = 'left')
+
+                            
+
+
+
+        #     # Select the first match -- TODO: Change this? Could use some more transparency
+        #     temp_id_col = temp_id[0]
+
+        #     else:
+        #         temp_id_col = configs['datetime_base']
+            
+        df = time_mapping_dict[configs['datetime_base']].apply_offset(dataframe = df, time_columns = configs['files'][filename]['datetime'], id_column = datetime_id_column, update = True)
         
         for id_column in configs['files'][filename]['id']:
             # lookup which id_mapping_dict
