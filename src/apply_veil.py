@@ -136,20 +136,20 @@ if __name__ == '__main__':
                 print('datetime_id not found in dataframe')
                 print('now attempting to join in IDs')
                 # Find all instances in id_dicts where both 
-                for key in id_dicts:
-                    for col in df.columns:
-                        for ids in temp_ids:
-                            if col in id_dicts[key].columns and ids in id_dicts[key].columns:
-                                df_col = col
-                                temp_id = ids
-                
-                # Now, using those, we need to create a lookup
-                join_df = pd.DataFrame()
-                for key in id_dicts:
-                    if df_col in id_dicts[key].columns and temp_id in id_dicts[key].columns:
-                        join_df = join_df.append(id_dicts[key][[df_col, temp_id]])
-                join_df.drop_duplicates(inplace=True)
-                datetime_id_column = df_col
+            for key in id_dicts:
+                for col in df.columns:
+                    for ids in temp_ids:
+                        if col in id_dicts[key].columns and ids in id_dicts[key].columns:
+                            df_col = col
+                            temp_id = ids
+            
+            # Now, using those, we need to create a lookup
+            join_df = pd.DataFrame()
+            for key in id_dicts:
+                if df_col in id_dicts[key].columns and temp_id in id_dicts[key].columns:
+                    join_df = join_df.append(id_dicts[key][[df_col, temp_id]])
+            join_df.drop_duplicates(inplace=True)
+            datetime_id_column = df_col
 
         df = pd.merge(df, join_df, left_on = [df_col], right_on = [temp_id], how = 'left')
 
