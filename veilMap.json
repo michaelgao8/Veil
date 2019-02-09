@@ -1,0 +1,7 @@
+[
+    {
+    "deidentify": [ "name", "address"],
+    "timeshift": ["dob"] 
+    }
+]
+
