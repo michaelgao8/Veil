@@ -151,7 +151,7 @@ if __name__ == '__main__':
             join_df.drop_duplicates(inplace=True)
             datetime_id_column = df_col
 
-        df = pd.merge(df, join_df, left_on = [df_col], right_on = [temp_id], how = 'left')
+            df = pd.merge(df, join_df, left_on = [df_col], right_on = [df_col], how = 'left')
 
                             
 
