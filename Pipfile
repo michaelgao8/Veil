@@ -8,6 +8,8 @@ dateparser = "*"
 
 [dev-packages]
 ipython = "*"
+pytest = "*"
+pyyaml = "*"
 
 [requires]
 python_version = "3.6"
