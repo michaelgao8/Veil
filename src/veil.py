@@ -1,358 +1,219 @@
-import pandas as pd
-import numpy as np
-import warnings
-import datetime
-
-class id_map:
-	"""
-	The following class instantiates objects which are associated with an ID 
-	that must be replaced in the deidentification process. The methods can 
-	be applied to DataFrames in order to apply the associated deidentification.
-	In addition, the lookup tables generated can be exported for saving in 
-	the case that re-identification needs to be performed
-
-	Internally, objects of this class store the reference table as a dictionary
-	for easy and fast reference.
-	"""
-
-	def __init__(self, dataframe, id_column = None, from_reference = False, key_col = None, val_col = None):
-		if from_reference:
-			"""
-			This method creates the reference table from a key value pair in a 
-			pandas DataFrame. This can be used to re-instantiate a reference table
-			for re-use in a downstream script -- for example when trying to append new
-			data that uses the same deidentification method
-			"""
-			assert key_col is not None, 'if using from_reference, must specify a key_col'
-			assert val_col is not None, 'if using val_col, must specify a val_col'
-
-			assert key_col in dataframe.columns, 'key_col must be in the dataframe column set'
-			assert val_col in dataframe.columns, 'val_col must be in the dataframe column set'
-
-			self.reference_table = dict(zip(dataframe[key_col], dataframe[val_col]))
-			self.key_name = key_col
-			self.val_name = val_col
-
-		elif not from_reference:
-			"""
-			This method of instantiating a reference table uses a DataFrame of data
-			to start the reference table creation. The upper bound on random sampling 
-			is hard-coded in this case to 1 x 10^9, in the assumption that we will never
-			have more identifiers than that (1 billion)
-			"""
-			assert id_column is not None, 'if from_reference is False, id_column of column to \
-			be de-identified cannot be None'
-			assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
-
-			keys = dataframe[id_column].unique()
-
-			# Generate a unique list of random numbers that ensures no collision and also prevents us
-			# from creating really large range() objects in memory
-
-			values = set()
-			value_size = keys.shape[0]
-			# initialize a counter
-			value_init = 0
-
-			while value_init < value_size:
-				r = np.random.randint(0, 1000000000, 1000)
-				# Generate 1000 at a time -- this should be reasonably fast
-				for rand in r:
-					if rand not in values:
-						values.add(rand)
-						value_init += 1
-						if value_init == value_size:
-							break
-
-			values = pd.Series(list(values))
-			self.reference_table = dict(zip(keys, values))
-			self.key_name = id_column
-			self.val_name = 'veil_id'
-
-			assert self.key_name != self.val_name, 'Do not use veil_id as your id_column'
-
-	def deidentify(self, dataframe, column_to_replace, update = True, debug = False):
-		"""
-		This function takes self.reference_table and maps it to a particular column in reference table
-		If the update = True flag is set, it will also update the reference table with any new items
-		that it encounters in the new column that it is searching over
-		"""
-		if update:
-			# First, check that there are at least some overlap values:
-			if len([x for x in dataframe[column_to_replace] if x in self.reference_table.keys()]) == 0:
-				warnings.warn('There are no matches between the current reference table and the column \
-that you are trying to replace. Please make sure that this is intended behavior')
-
-			# Update the list of random numbers with new keys
-			new_keys = [key for key in dataframe[column_to_replace].unique() if key not in self.reference_table]
-			if len(new_keys) != 0:
-				new_values = set()
-				new_value_size = len(new_keys)
-				value_init = 0
-
-				while value_init < new_value_size:
-					r = np.random.randint(0, 1000000000, 1000)
-					for rand in r:
-						if (rand not in new_values) and (rand not in self.reference_table.values()):
-							new_values.add(rand)
-							value_init += 1
-							if value_init == new_value_size:
-								break
-				new_values = pd.Series(list(new_values))
-
-				new_table = dict(zip(new_keys, new_values))
-				self.reference_table.update(new_table)
-
-			if debug:
-				try:
-					print(new_table)
-				except:
-					print('no values in new_table')
-
-
-		else:
-			if len([x for x in dataframe[column_to_replace] if x not in self.reference_table]) != 0:
-				warnings.warn("There are values in this column which are not in this object's reference table. Additionally \
-this function is being run with the update = False flag. Values which are not in the reference table are \
-mapped to NaN")
-
-		dataframe = dataframe.copy(deep = True)
-		dataframe[column_to_replace] = dataframe[column_to_replace].map(self.reference_table)
-		return dataframe
-
-	def reidentify(self, dataframe, column_to_reidentify):
-		"""
-		This function performs the inverse operation of deidentify; that is, it takes the values
-		of reference tables, looks for them in the `column_to_reidentify` argument, and then replaces
-		them with the keys associated with those values. For any value which does not appear in 
-		self.reference_table.values, a NaN is passed
-		"""
-		inverse_map = {v: k for k, v in self.reference_table.items()}
-		dataframe = dataframe.copy(deep = True)
-		dataframe[column_to_reidentify] = dataframe[column_to_reidentify].map(inverse_map)
-		return dataframe
-
-	def save(self, file, format = '.csv', debug = False):
-		"""
-		This function saves the current state of a self.reference table. Currently, the only format
-		supported is csv, although others will be added soon. 
-		"""
-		save_df = pd.DataFrame.from_dict(self.reference_table, orient = 'index')
-		save_df.index.name = self.key_name
-		save_df.columns = [self.val_name]
-		
-		if debug:
-			print(save_df.head())
-			return None
-
-		save_df.to_csv(file)
-		return True
-
-# Offset Map ===========
-
-class offset_map:
-	"""
-	The following class instantiates objects which are associated with an ID. The objects have an 
-	internal reference that stores the datetime offsets that need to be applied in order to shift 
-	dates, but do so consistently for all times associated with the IDs. The original 2 use cases will 
-	feature random shifting as well as shifting to the beginning of the associated year to keep 
-	differing aspects of temporal information while making it more difficult to establish the true
-	time
-	"""
-
-	def __init__(self, dataframe, method, max_days = None, id_column = None, time_column = None, from_reference = False, key_col = None, val_col = None):
-		if from_reference:
-			"""
-			This method creates the reference table from a key value pair in a 
-			pandas DataFrame. This can be used to re-instantiate a reference table
-			for re-use in a downstream script -- for example when trying to append new
-			data that uses the same time offsets
-			"""
-			assert key_col is not None, 'if using from_reference, must specify a key_col'
-			assert val_col is not None, 'if using val_col, must specify a val_col'
-
-			assert key_col in dataframe.columns, 'key_col must be in the dataframe column set'
-			assert val_col in dataframe.columns, 'val_col must be in the dataframe column set'
-			dataframe  = dataframe.copy(deep = True)
-
-			try:
-				dataframe[val_col] = dataframe[val_col].astype(np.int64)
-			except:
-				'{} could not be converted to type np.int64 for downstream conversion to timedelta64[ns] type'.format(val_col)
-
-			time_offset = pd.Series([np.timedelta64(x, 'ns') for x in dataframe[val_col]]) # this is slow -- can optimize
-
-			self.reference_table = dict(zip(dataframe[key_col], time_offset))
-			self.key_name = key_col
-			self.method = method
-
-			if method == 'random':
-				self.max_days = max_days
-			elif method == 'year_start':
-				self.max_days = None
-
-		elif not from_reference:
-
-			assert id_column is not None, 'if from_reference is False, id_column cannot be None'
-			assert id_column in dataframe.columns, 'id_column must be in dataframe column set'
-
-			if method == 'random':
-				"""
-				This method takes in value of the ID in the dataframe and generates a random date offset
-				up to `max_days` away from the original. 
-				"""
-				assert max_days is not None, 'if using a random_method, please specify a max_days'
-				keys = dataframe[id_column].unique()
-
-				values = np.random.uniform(-max_days, max_days, size = keys.shape[0])
-				timedeltas = pd.to_timedelta(values, unit = 'D')
-
-				self.reference_table = dict(zip(keys, timedeltas))
-				self.key_name = id_column
-				self.method = method
-				self.max_days = max_days
-
-
-			elif method == 'year_start':
-				"""
-				This method computes the dateoffset from midnight of the year of time_column. 
-				"""
-				assert time_column is not None, 'if the method is year_start, a time_column must be provided for reference'
-
-				dataframe = dataframe.copy(deep = True)
-
-				try:
-					dataframe[time_column] = pd.to_datetime(dataframe[time_column])
-				except Exception:
-					print("Could not convert {} to pd.datetime object".format(time_column))
-
-				dataframe = dataframe.sort_values([time_column]).drop_duplicates(id_column, keep = 'first').reset_index(drop = True)
-
-				# Compute the offset from time_column to the first of the year
-				year_starts = dataframe[time_column].dt.year
-				offsets = dataframe[time_column] - pd.Series([datetime.datetime(x, 1, 1, 0, 0, 0) for x in year_starts])
-
-				self.reference_table = dict(zip(dataframe[id_column], offsets))
-				self.key_name = id_column
-				self.method = method
-				self.max_days = None
-
-	def apply_offset(self, dataframe, time_columns, update = False, reverse = False, id_column = None):
-		"""
-		This applies the offset stored in reference table to all columns in time_columns
-		if possible. If the update flag is True, it also looks for the minimum time for any 
-		ids that are not currently in the reference table and creates the associated offset
-		based on self.method. If false, it simply returns NA for the time to err on the side of 
-		caution
-		"""
-
-		if id_column is None:
-			id_column = self.key_name
-
-		dataframe = dataframe.copy(deep = True)
-		dataframe = dataframe.reset_index(drop = True)
-		
-		if update:
-			assert self.method == 'random', "update = True currently only supports 'random'"
-			new_keys = [key for key in dataframe[id_column].unique() if key not in self.reference_table]
-			if len(new_keys) > 0:
-				values = np.random.uniform(-self.max_days, self.max_days, size = len(new_keys))
-				timedeltas = pd.to_datetime(values, unit = 'D')
-
-				new_dict = dict(zip(new_keys, timedeltas))
-
-				self.reference_table.update(new_dict)
-
-		# === End Update Block
-
-		# Try to convert every time_col in time_columns:
-		if isinstance(time_columns, str):
-			try:
-				dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
-			except:
-				'Conversion Error'
-				pass
-			
-			new_time_col = []
-
-			if reverse:
-
-				for i, row in enumerate(dataframe.itertuples()):
-					if i % 10000 == 0:
-						print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
-					try:
-						new_time_col.append(getattr(row, time_columns) + self.reference_table[getattr(row, id_column)])
-					except:
-						new_time_col.append(np.nan)
-
-			else:
-				for i, row in enumerate(dataframe.itertuples()):
-					if i % 10000 == 0:
-						print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
-					try:
-						new_time_col.append(getattr(row, time_columns) - self.reference_table[getattr(row, id_column)])
-					except:
-						new_time_col.append(np.nan)
-			
-			dataframe[time_columns] = new_time_col
-			#dataframe[time_columns] = pd.to_datetime(dataframe[time_columns])
-						
-
-		elif isinstance(time_columns, list):
-			valid_col_list = []
-			for col in time_columns:
-				try:
-					dataframe[col] = pd.to_datetime(dataframe[col])
-					valid_col_list.append(col)
-				except:
-					'Conversion Error'
-			
-			
-			if reverse:
-				for col in valid_col_list:
-					new_time_col = []
-					for i, row in enumerate(dataframe.itertuples()):
-						if i % 10000 == 0:
-							print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
-						try:
-							new_time_col.append(getattr(row, col) + self.reference_table[getattr(row, id_column)])
-						except:
-							new_time_col.append(np.nan)
-					dataframe[col] = new_time_col
-					#dataframe[col] = pd.to_datetime(dataframe[col])
-
-			else:
-				for col in valid_col_list:
-					new_time_col = []
-					for i, row in enumerate(dataframe.itertuples()):
-						if i % 10000 == 0:
-							print('processed {} of {} encounters'.format(i, dataframe.shape[0]))
-						try:
-							new_time_col.append(getattr(row, col) - self.reference_table[getattr(row, id_column)])
-						except:
-							new_time_col.append(np.nan)
-					dataframe[col] = new_time_col
-					#dataframe[col] = pd.to_datetime(dataframe[col])
-
-			
-		return dataframe
-
-	def save(self, file, format = '.csv', debug = False):
-		"""
-		This function saves the current state of the reference table to the 
-		format specified. The offset will be stored in a 64 bit integer 
-		containing the number of nanoseconds in the offset. This is natively
-		handled in the __init__ method for reading
-		"""
-
-		offset = [x.total_seconds() * 1000000000 for x in self.reference_table.values()]
-		save_df = pd.DataFrame.from_dict({self.key_name: list(self.reference_table.keys()), 'offset': offset})
-		save_df.to_csv(file)
-
-		return True
-
-
-
-
-
+import csv
+import dateparser
+import uuid
+import pickle
+import random
+from datetime import timedelta, datetime
+import re
+
+def _get_random_nonzero_int(bound:int) -> int:
+    """
+    """
+    is_zero = True
+    while is_zero:
+        a = random.randint(-bound, bound)
+        if a != 0:
+            is_zero = False
+    return a
+
+class veil:
+
+    def __init__(self, max_days=365):
+        """
+        The internal representation of an object of the veil class is a dictionary 
+        with the following structure:
+
+        {
+            'id': {},
+            'offset': {}
+        }
+
+        In addition, some compiled regular expressions are included so that the 
+        logic is carried forward with imports
+        """
+        self.veil = {
+            'id': {},
+            'offset': {}
+            }
+        self.max_days = max_days
+        self.YMD_HMS_RE = re.compile(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}')
+        self.YMD_RE = re.compile(r'\d{4}-\d{2}-\d{2}$')
+
+    
+    def __repr__(self):
+        r = """veil object with following internal representation: 
+        {} 
+        max_days: {}
+        """.format(self.veil, self.max_days)
+        return r
+
+    def add_id_map(self, name:str):
+        """ 
+        Instantiates a new id-based map
+        """
+        if name in self.veil['id']:
+            raise(KeyError, 'conflicting keys in id veil')
+        self.veil['id'].update({name:{}})
+
+    # TODO: if more than 1 datetime base is needed
+    # def add_offset_map(self, name:str):
+    #     """
+    #     Instantiates a new offset map
+    #     """
+    #     if name in self.veil['offset']:
+    #         raise(KeyError, 'conflicting keys in offset veil')
+    #     self.veil['offset'].update({name: {}})
+        
+    def update_id_map(self, name:str, id):
+        """
+        Updates values in the id_map using UUID
+        """
+        if str(id) not in self.veil['id'][name]:
+            self.veil['id'][name].update({str(id): uuid.uuid4()})
+        pass
+    
+    def update_offset_map(self, id):
+        """
+        Updates values in the offset_map 
+        """
+        if str(id) not in self.veil['offset']:
+            self.veil['offset'].update(
+                {str(id):_get_random_nonzero_int(self.max_days)})
+
+    def _deidentify_id_columns(self, row, id_columns, \
+        debug=False):
+        """
+        a row object is passed in from a csv.DictReader
+        # TODO: What happens if the id_col is not instantiated in 
+        # veil? Add automatically?
+        """
+        if isinstance(id_columns, str):
+            id_columns = [id_columns] 
+        for id_col in id_columns:
+                    current_id_to_replace = row[id_col]
+                    if current_id_to_replace not in self.veil['id'][id_col]:
+                        self.update_id_map(id_col, current_id_to_replace)
+                    try:
+                        if debug:
+                            print(row)
+                            print(row[id_col])
+                        row[id_col] = self.veil['id'][id_col][row[id_col]]
+                    except KeyError:
+                        row[id_col] = None
+                    except TypeError:
+                        row[id_col] = None
+        return row
+    
+    def _deidentify_time_columns(self, row, time_columns, datetime_base_column,\
+        debug=False, date_formats=None):
+        """ 
+        date_formats is a list that contains the date format
+        to pass to datetime.strptime() for each element in 
+        time_columns 
+        """
+        if isinstance(time_columns, str):
+            time_columns = [time_columns] 
+        current_id = row[datetime_base_column]
+        # Update the offset row using datetime_base
+        if current_id not in self.veil['offset']:
+            self.update_offset_map(current_id)
+        for i,col in enumerate(time_columns):
+            if row[col] == '':
+                row[col] == None
+            else:
+                try:
+                    if debug:
+                        print('row: {}'.format(row))
+                        print(row[col])
+                    if date_formats:
+                        if not date_formats[i]:
+                            row[col] = dateparser.parse(row[col], languages=['en'])\
+                            + timedelta(days=self.veil['offset'][str(current_id)])
+                        elif date_formats[i]:
+                            row[col] = datetime.strptime(row[col], date_formats[i])\
+                            + timedelta(days=self.veil['offset'][str(current_id)])
+                    elif not date_formats:
+                        row[col] = dateparser.parse(row[col], languages=['en'])\
+                        + timedelta(days = self.veil['offset'][str(current_id)])
+                except KeyError:
+                    row[col] = None
+                except TypeError:
+                    row[col] = None # This usually occurs when dateparser is unable 
+                                    # to correclty parse the datetime (e.g. no date)
+        return row
+
+    def deidentify(self, reader: csv.DictReader, writer: csv.DictWriter,
+                    time_columns=None, datetime_base_column=None,
+                    id_columns=None, update=True, 
+                    mapping_dict=None, to_drop=None, 
+                    debug=False, verbose=False):
+        """
+        Takes in a csv reader and applies the various maps to mask all 
+        identifiers and also shift datetimes accordingly. 
+        Args:
+            time_columns (str or List): A list of columns that contain datetimes 
+                to parse and convert
+            datetime_base_column (str): The base column to shift datetimes 
+                according to. For example, this can be the name of a key in
+                self.veil['id']
+            id_columns (str or List): The id column to mask. Names must match 
+                self.veil['id'] unless mapping_dict is specified
+            update (bool): Whether or not to update the maps as the files are
+                deidentified
+
+        # TODO: Implement mapping_dict
+        # TODO: Implement update = None path
+        """ 
+        writer.writeheader()
+        if time_columns:
+            time_parsing_infer = {
+                t:{
+                    '%Y-%m-%d %H:%M:%S': 0,
+                    '%Y-%m-%d': 0,
+                } for t in time_columns
+            }
+        if not mapping_dict:
+            for i,row in enumerate(reader):
+                if i % 10000 == 0 and i != 0:
+                    print('Deidentifying Row: {}'.format(i))
+                if time_columns is not None:
+                    if i < 10:
+                        for time_col in time_columns:
+                            if row != "":
+                                if self.YMD_HMS_RE.match(row[time_col]):
+                                    time_parsing_infer[time_col]['%Y-%m-%d %H:%M:%S'] += 1
+                                elif self.YMD_RE.match(row[time_col]):
+                                    time_parsing_infer[time_col]['%Y-%m-%d'] += 1
+                        row = self._deidentify_time_columns(row, time_columns, \
+                            datetime_base_column, debug=debug) 
+                
+                    # Check the inference to potentially speed things up
+                    elif i == 10:
+                        format_list = []
+                        for time_col in time_columns:
+                            max_fmt = max(time_parsing_infer[time_col].values())
+                            if max_fmt > 5:
+                                fmt = [x for x in time_parsing_infer[time_col] \
+                                    if time_parsing_infer[time_col][x] == max_fmt]
+                                format_list.append(fmt[0])
+                            else:
+                                format_list.append(None)
+                            
+                        row = self._deidentify_time_columns(row, time_columns, \
+                        datetime_base_column, debug=debug) 
+                        print(format_list) 
+                    else:
+                        row = self._deidentify_time_columns(row, time_columns, \
+                            datetime_base_column, debug=debug,\
+                                date_formats=format_list)
+
+                if id_columns is not None:
+                    row = self._deidentify_id_columns(row, id_columns,
+                    debug=debug)
+                if to_drop:
+                    for drop in to_drop:
+
+                        row.pop(drop)
+                writer.writerow(row)
+        pass
 
