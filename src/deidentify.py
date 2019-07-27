@@ -12,17 +12,13 @@ parser.add_argument('-o', '--output-dir', help='output directory', type=str)
 parser.add_argument('-c', '--config', help='configuration file path', type=str)
 
 if __name__ == '__main__':
-    args = parse.parse_args()
+    args = parser.parse_args()
 
-    input_dir = args.input_dir
-    output_dir = args.output_dir
-    config_filepath = args.config
-
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
+    if not os.path.exists(args.output_dir):
+        os.mkdir(arg.soutput_dir)
     
     # Read in the configuration file
-    with open(args.config_filepath, 'r') as stream:
+    with open(args.config, 'r') as stream:
         try:
             configs = yaml.load(stream, Loader=yaml.FullLoader)
         except yaml.YAMLError as exc:
@@ -38,12 +34,12 @@ if __name__ == '__main__':
     for i in id_cols:
         new_veil.add_id_map(i)
     
-    for f in os.listdir(input_dir):
+    for f in os.listdir(args.input_dir):
         print('Now Deidentifying: {}'.format(f))
         fname = Path(f).stem
-        fullpath = os.path.join(input_dir, f)
+        fullpath = os.path.join(args.input_dir, f)
         with open(fullpath, 'r') as r, \
-            open(output_dir + f, 'w') as w:
+            open(args.output_dir + f, 'w') as w:
 
                 to_drop = configs['files'][f]['exclude']
                 reader = csv.DictReader(r)
